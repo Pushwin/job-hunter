@@ -5,17 +5,16 @@ Privacy-first job discovery for fresher and associate .NET, C#, Java and technic
 ## Run locally
 
 1. Copy `.env.example` to `.env` and add a [SerpAPI key](https://serpapi.com/) plus a Telegram bot token and chat ID.
-2. Replace the examples in `companies.json` with real public Greenhouse, Lever, and Ashby board tokens.
-3. Run `npm install`, then `npm run dev`. Open `http://localhost:5173`.
-4. Choose **Test Telegram** first, then **Search now**.
+2. Run `npm install`, then `npm run dev`. Open `http://localhost:5173`.
+3. Choose **Test Telegram** first, then **Search now**.
 
 The default schedule is every 24 hours (`SCAN_INTERVAL_MINUTES=1440`). `JOB_MAX_AGE_HOURS=24` keeps only jobs with a verifiable timestamp inside the last day; listings with no timestamp are skipped rather than labelled as fresh. A full scan runs seven SerpAPI requests (two role searches for each city plus one Google Form search), which is about 210 calls/month on the free SerpAPI plan. `npm run scan` performs one scan, which suits a GitHub Actions schedule.
 
 ## Sources and privacy
 
 - SerpAPI powers Google Jobs and Google Form discovery. No Google HTML is scraped.
-- Greenhouse, Lever and Ashby only use their public job-board endpoints.
-- Telegram offers no public cross-channel search API. To enable walk-in discovery, set `WALKIN_RSS_FEEDS` to comma-separated public, authorized RSS/export feeds for channels you are allowed to monitor. The app does not sign in to Telegram or scrape private channels.
+- Greenhouse, Lever and Ashby only use their public job-board endpoints. `companies.json` ships with verified public boards for companies that hire engineers in Bengaluru.
+- Walk-ins default to the public FreshersNow RSS feeds (walk-in category plus the main feed). Override with `WALKIN_RSS_FEEDS` as comma-separated feeds you are authorized to read. No Telegram login or channel scraping is involved.
 - Jobs are deduplicated in local SQLite at `data/job-hunter.db`.
 
 ## Deploy

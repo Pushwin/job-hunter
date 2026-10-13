@@ -18,7 +18,8 @@ async function scan() {
   const scanId = startScan();
   try {
     const outcomes = await Promise.allSettled([googleJobs(), googleForms(), companyBoards(), walkIns()]);
-    const candidates = outcomes.flatMap(x => x.status === 'fulfilled' ? x.value : []);
+    const sourceResults = outcomes.flatMap(x => x.status === 'fulfilled' ? [x.value] : []);
+    const candidates = sourceResults.flatMap(x => x.jobs);
     const newIds = [];
     for (const job of candidates) { const id = saveJob(job); if (id) newIds.push(id); }
     const fresh = unalerted(newIds);
@@ -26,7 +27,13 @@ async function scan() {
     if (telegram.sent) markAlerted(fresh.map(x => x.id));
     const issues = outcomes.filter(x => x.status === 'rejected').map(x => x.reason.message).join('; ');
     finishScan(scanId, issues ? 'partial' : 'complete', fresh.length, issues || null);
-    return { newMatches: fresh.length, candidates: candidates.length, telegram, issues: issues || null };
+    return {
+      newMatches: fresh.length,
+      candidates: candidates.length,
+      telegram,
+      sources: sourceResults.map(x => ({ source: x.source, inspected: x.inspected, verified: x.jobs.length })),
+      issues: issues || null
+    };
   } catch (error) {
     finishScan(scanId, 'failed', 0, error.message);
     throw error;

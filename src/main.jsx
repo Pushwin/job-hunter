@@ -8,7 +8,15 @@ function App() {
   const [jobs, setJobs] = useState([]); const [info, setInfo] = useState({}); const [tag, setTag] = useState('All'); const [search, setSearch] = useState(''); const [working, setWorking] = useState(false); const [toast, setToast] = useState('');
   async function load() { const [j, d] = await Promise.all([fetch(`${API}/jobs?limit=50&tag=${tag}&search=${encodeURIComponent(search)}`).then(x => x.json()), fetch(`${API}/dashboard`).then(x => x.json())]); setJobs(j); setInfo(d); }
   useEffect(() => { load().catch(() => setToast('Could not reach the backend. Is it running?')); }, [tag, search]);
-  async function scan() { setWorking(true); try { const r = await fetch(`${API}/scan`, { method: 'POST' }).then(x => x.json()); setToast(r.error || (r.skipped ? r.reason : `Scan complete: ${r.newMatches} new matches.`)); await load(); } finally { setWorking(false); } }
+  async function scan() {
+    setWorking(true);
+    try {
+      const r = await fetch(`${API}/scan`, { method: 'POST' }).then(x => x.json());
+      const detail = r.sources?.map(x => `${x.source}: ${x.verified} verified from ${x.inspected}`).join(' · ');
+      setToast(r.error || (r.skipped ? r.reason : `Scan complete: ${r.newMatches} new matches. ${detail || ''}${r.issues ? ` Issue: ${r.issues}` : ''}`));
+      await load();
+    } finally { setWorking(false); }
+  }
   async function testAlert() { const r = await fetch(`${API}/test-alert`, { method: 'POST' }).then(x => x.json()); setToast(r.error || (r.sent ? 'Test alert sent to Telegram.' : r.reason)); }
   const counts = useMemo(() => info.stats || {}, [info]);
   return <main><header><div><span className="eyebrow">PRIVATE JOB RADAR</span><h1>Job Hunter</h1><p>Fresh early-career tech roles, found without logging into your accounts.</p></div><div className="actions"><button className="quiet" onClick={testAlert}>Test Telegram</button><button className="primary" disabled={working} onClick={scan}>{working ? 'Scanning…' : 'Search now'}</button></div></header>

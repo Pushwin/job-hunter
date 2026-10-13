@@ -1,8 +1,8 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 
-const roles = /\b(\.net|c#|java|technical consultant|software engineer|software developer|systems engineer)\b/i;
-const entryLevel = /\b(fresher|graduate|trainee|entry.?level|junior|associate|0\s*(?:-|–|to)\s*1\s*(?:years?|yrs?))\b/i;
+const roles = /\b(\.net|c#|java|technical consultant|software engineer|software developer|systems engineer|software trainee|graduate engineer|trainee engineer)\b/i;
+const entryLevel = /\b(fresher|graduate|trainee|entry.?level|junior|associate|new college graduate|ncg|campus|walk[\s-]?in|0\s*(?:-|–|to)\s*1\s*(?:years?|yrs?))\b/i;
 const cities = /\b(bangalore|bengaluru|mangalore|mangaluru|mysore|mysuru)\b/i;
 const blocked = (process.env.BLOCKLIST || 'tcs,infosys,wipro,accenture,cognizant,capgemini,ibm,deloitte').split(',').map(x => x.trim().toLowerCase());
 const ageHours = Number(process.env.JOB_MAX_AGE_HOURS || 24);
@@ -10,9 +10,15 @@ const fingerprint = value => crypto.createHash('sha256').update(value).digest('h
 const hoursAgo = value => value ? (Date.now() - new Date(value).getTime()) / 36e5 : 0;
 function postedTime(value) {
   if (!value) return null;
+  // Google Jobs commonly says “Today” or “Just posted”. Those are safely
+  // within the current calendar day, so they are valid for a 24-hour search.
+  if (/\b(today|just posted|recently posted)\b/i.test(String(value))) return new Date().toISOString();
   const relative = String(value).match(/(\d+)\s*(minute|min|hour|hr|day|week)/i);
   if (relative) {
-    const factor = /minute|min/i.test(relative[2]) ? 1 / 60 : /hour|hr/i.test(relative[2]) ? 1 : /day/i.test(relative[2]) ? 24 : 168;
+    // “1 day ago” has no precise time and could be almost 48 hours old.
+    // Do not guess it is inside the requested exact 24-hour window.
+    if (/day|week/i.test(relative[2])) return null;
+    const factor = /minute|min/i.test(relative[2]) ? 1 / 60 : 1;
     return new Date(Date.now() - Number(relative[1]) * factor * 36e5).toISOString();
   }
   const date = new Date(value);
@@ -50,25 +56,28 @@ async function serp(params) {
 }
 export async function googleJobs() {
   const found = [];
+  let inspected = 0;
   const roleQueries = [
-    'fresher .NET C# developer 0 years',
-    'fresher Java software engineer OR associate technical consultant 0 years'
+    '(.NET OR C#) (fresher OR graduate OR trainee)',
+    '(Java OR "Associate Technical Consultant") (fresher OR graduate OR trainee)'
   ];
   for (const city of ['Bangalore', 'Mangalore', 'Mysore']) {
     for (const query of roleQueries) {
       const data = await serp({ engine: 'google_jobs', q: query, location: city, hl: 'en', gl: 'in' });
       for (const item of data.jobs_results || []) {
+        inspected += 1;
         const apply = item.apply_options?.[0]?.link || item.share_link;
         const match = normalize({ title: item.title, company: item.company_name, location: item.location, url: apply, description: item.description, postedAt: postedTime(item.detected_extensions?.posted_at) }, 'SerpAPI Google Jobs', 'Direct');
         if (match) found.push(match);
       }
     }
   }
-  return found;
+  return { source: 'Google Jobs', inspected, jobs: found };
 }
 export async function googleForms() {
   const data = await serp({ engine: 'google', q: '(site:forms.gle OR site:docs.google.com/forms) (fresher OR graduate OR trainee) (.NET OR C# OR Java OR "Technical Consultant") (Bangalore OR Mangalore OR Mysore)', tbs: 'qdr:d', hl: 'en', gl: 'in' });
-  return (data.organic_results || []).map(x => normalize({ title: x.title, url: x.link, description: x.snippet, location: x.snippet, postedAt: postedTime(x.date) }, 'SerpAPI Google search', 'Google Form')).filter(Boolean);
+  const results = data.organic_results || [];
+  return { source: 'Google Forms', inspected: results.length, jobs: results.map(x => normalize({ title: x.title, url: x.link, description: x.snippet, location: x.snippet, postedAt: postedTime(x.date) }, 'SerpAPI Google search', 'Google Form')).filter(Boolean) };
 }
 async function boardJobs(company) {
   const endpoints = {
@@ -84,19 +93,27 @@ async function boardJobs(company) {
 }
 export async function companyBoards() {
   const companies = JSON.parse(fs.readFileSync('companies.json', 'utf8'));
-  const results = await Promise.allSettled(companies.filter(x => x.token && x.token !== 'example').map(boardJobs));
-  return results.flatMap(x => x.status === 'fulfilled' ? x.value : []);
+  const configured = companies.filter(x => x.token && x.token !== 'example');
+  const results = await Promise.allSettled(configured.map(boardJobs));
+  const jobs = results.flatMap(x => x.status === 'fulfilled' ? x.value : []);
+  return { source: 'Company boards', inspected: configured.length, jobs };
 }
-// Telegram has no public cross-channel search API. Add public-channel post URLs
-// through an approved RSS/export service if you want this source enabled.
+// Walk-ins come from public fresher-job RSS feeds. Telegram has no public
+// cross-channel search API, so no Telegram scraping is involved here.
+const defaultFeeds = ['https://www.freshersnow.com/category/walkin/feed/', 'https://www.freshersnow.com/feed/'];
 export async function walkIns() {
-  const feeds = (process.env.WALKIN_RSS_FEEDS || '').split(',').map(x => x.trim()).filter(Boolean);
+  const feeds = (process.env.WALKIN_RSS_FEEDS || defaultFeeds.join(',')).split(',').map(x => x.trim()).filter(Boolean);
   const results = await Promise.allSettled(feeds.map(async feed => {
     const response = await fetch(feed);
     if (!response.ok) throw new Error(`Walk-in feed returned ${response.status}`);
     const xml = await response.text();
-    return [...xml.matchAll(/<item>[\s\S]*?<title><!\[CDATA\[([\s\S]*?)\]\]><\/title>[\s\S]*?<link>([\s\S]*?)<\/link>[\s\S]*?(?:<description><!\[CDATA\[([\s\S]*?)\]\]><\/description>)?[\s\S]*?<pubDate>([\s\S]*?)<\/pubDate>[\s\S]*?<\/item>/g)]
-      .map(x => normalize({ title: x[1], url: x[2].trim(), description: x[3] || '', location: x[1] + ' ' + (x[3] || ''), postedAt: x[4] }, 'Public walk-in RSS feed', 'Walk-in')).filter(Boolean);
+    const pick = (block, tag) => {
+      const match = block.match(new RegExp(`<${tag}>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?</${tag}>`));
+      return match ? match[1].trim() : '';
+    };
+    return [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)]
+      .map(x => x[1])
+      .map(block => normalize({ title: pick(block, 'title'), url: pick(block, 'link'), description: pick(block, 'description'), location: `${pick(block, 'title')} ${pick(block, 'description')}`, postedAt: pick(block, 'pubDate') }, 'Public walk-in RSS feed', 'Walk-in')).filter(Boolean);
   }));
-  return results.flatMap(x => x.status === 'fulfilled' ? x.value : []);
+  return { source: 'Walk-ins', inspected: feeds.length, jobs: results.flatMap(x => x.status === 'fulfilled' ? x.value : []) };
 }

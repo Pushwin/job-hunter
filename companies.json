@@ -1,5 +1,14 @@
 [
-  { "name": "Example Bengaluru Studio", "board": "greenhouse", "token": "example" },
-  { "name": "Example Mangalore Startup", "board": "lever", "token": "example" },
-  { "name": "Example Mysore Company", "board": "ashby", "token": "example" }
+  { "name": "Okta", "board": "greenhouse", "token": "okta" },
+  { "name": "MongoDB", "board": "greenhouse", "token": "mongodb" },
+  { "name": "InMobi", "board": "greenhouse", "token": "inmobi" },
+  { "name": "Rubrik", "board": "greenhouse", "token": "rubrik" },
+  { "name": "GitLab", "board": "greenhouse", "token": "gitlab" },
+  { "name": "Sigmoid", "board": "greenhouse", "token": "sigmoid" },
+  { "name": "HackerRank", "board": "greenhouse", "token": "hackerrank" },
+  { "name": "Elastic", "board": "greenhouse", "token": "elastic" },
+  { "name": "Datadog", "board": "greenhouse", "token": "datadog" },
+  { "name": "New Relic", "board": "greenhouse", "token": "newrelic" },
+  { "name": "Fivetran", "board": "greenhouse", "token": "fivetran" },
+  { "name": "Zeta", "board": "lever", "token": "zeta" }
 ]
