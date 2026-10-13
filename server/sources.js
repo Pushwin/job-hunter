@@ -59,7 +59,9 @@ export async function googleJobs() {
   let inspected = 0;
   const roleQueries = [
     '(.NET OR C#) (fresher OR graduate OR trainee)',
-    '(Java OR "Associate Technical Consultant") (fresher OR graduate OR trainee)'
+    '(Java OR "Associate Technical Consultant") (fresher OR graduate OR trainee)',
+    '("Software Engineer" OR "Software Developer") fresher (Java OR .NET OR C#)',
+    '(fresher OR trainee) (walk-in OR walkin) (Java OR .NET OR C#)'
   ];
   for (const city of ['Bangalore', 'Mangalore', 'Mysore']) {
     for (const query of roleQueries) {
@@ -75,7 +77,7 @@ export async function googleJobs() {
   return { source: 'Google Jobs', inspected, jobs: found };
 }
 export async function googleForms() {
-  const data = await serp({ engine: 'google', q: '(site:forms.gle OR site:docs.google.com/forms) (fresher OR graduate OR trainee) (.NET OR C# OR Java OR "Technical Consultant") (Bangalore OR Mangalore OR Mysore)', tbs: 'qdr:d', hl: 'en', gl: 'in' });
+  const data = await serp({ engine: 'google', q: 'site:docs.google.com/forms OR site:forms.gle (fresher OR trainee) apply (Java OR .NET OR C#) (Bangalore OR Bengaluru)', tbs: 'qdr:d', hl: 'en', gl: 'in' });
   const results = data.organic_results || [];
   return { source: 'Google Forms', inspected: results.length, jobs: results.map(x => normalize({ title: x.title, url: x.link, description: x.snippet, location: x.snippet, postedAt: postedTime(x.date) }, 'SerpAPI Google search', 'Google Form')).filter(Boolean) };
 }
