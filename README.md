@@ -13,7 +13,7 @@ The default schedule is every 24 hours (`SCAN_INTERVAL_MINUTES=1440`). `JOB_MAX_
 ## Sources and privacy
 
 - SerpAPI powers Google Jobs and Google Form discovery. No Google HTML is scraped.
-- Greenhouse, Lever and Ashby only use their public job-board endpoints. `companies.json` ships with verified public boards for companies that hire engineers in Bengaluru.
+- Greenhouse, Lever, Ashby, SmartRecruiters and Workday are read only through their public career-site endpoints. `companies.json` lists verified boards for companies that hire engineers in Bengaluru (Bosch, Cisco, Salesforce, Philips, Intel, HPE, Adobe, NVIDIA and others).
 - Walk-ins default to the public FreshersNow RSS feeds (walk-in category plus the main feed). Override with `WALKIN_RSS_FEEDS` as comma-separated feeds you are authorized to read. No Telegram login or channel scraping is involved.
 - Jobs are deduplicated in local SQLite at `data/job-hunter.db`.
 

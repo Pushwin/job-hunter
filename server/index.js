@@ -25,13 +25,16 @@ async function scan() {
     const fresh = unalerted(newIds);
     const telegram = await sendTelegram(fresh);
     if (telegram.sent) markAlerted(fresh.map(x => x.id));
-    const issues = outcomes.filter(x => x.status === 'rejected').map(x => x.reason.message).join('; ');
+    const issues = [
+      ...outcomes.filter(x => x.status === 'rejected').map(x => x.reason.message),
+      ...sourceResults.flatMap(x => x.errors.map(e => `${x.source}: ${e}`))
+    ].join('; ');
     finishScan(scanId, issues ? 'partial' : 'complete', fresh.length, issues || null);
     return {
       newMatches: fresh.length,
       candidates: candidates.length,
       telegram,
-      sources: sourceResults.map(x => ({ source: x.source, inspected: x.inspected, verified: x.jobs.length })),
+      sources: sourceResults.map(x => ({ source: x.source, inspected: x.inspected, verified: x.jobs.length, rejected: x.rejected })),
       issues: issues || null
     };
   } catch (error) {
@@ -40,7 +43,7 @@ async function scan() {
   } finally { scanning = false; }
 }
 
-app.get('/api/health', (_req, res) => res.json({ ok: true, scanning, configured: { serpApi: Boolean(process.env.SERPAPI_KEY), telegram: Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID) } }));
+app.get('/api/health', (_req, res) => res.json({ ok: true, scanning, commit: (process.env.RENDER_GIT_COMMIT || 'local').slice(0, 7), configured: { serpApi: Boolean(process.env.SERPAPI_KEY), telegram: Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID) } }));
 app.get('/api/jobs', (req, res) => res.json(jobs(req.query)));
 app.get('/api/dashboard', (_req, res) => res.json({ stats: stats(), latestScan: latestScan(), scanning }));
 app.post('/api/scan', async (_req, res) => { try { res.json(await scan()); } catch (error) { res.status(500).json({ error: error.message }); } });
