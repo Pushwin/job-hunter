@@ -1,14 +1,18 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 
+// FILTERS DISABLED: the filters below are commented out so every result a
+// source returns is kept. Restore by uncommenting these lines and the
+// zeroExperienceOnly() and rejection() functions further down, and restoring
+// the filtered line inside consider().
 // \b cannot be used around ".net" / "c#" because "." and "#" are not word
 // characters, so explicit non-alphanumeric boundaries are used instead.
-const roles = /(?:^|[^a-z0-9])(\.net|dot\s?net|asp\.net|c#|java|technical consultant|software engineer|software developer|systems engineer|software trainee|graduate engineer|trainee engineer)(?![a-z0-9])/i;
-const entryLevel = /\b(fresher|freshers|graduate|trainee|entry.?level|junior|associate|new college graduate|ncg|campus|walk[\s-]?in|0\s*(?:-|–|to)\s*1\s*(?:years?|yrs?))\b/i;
-const seniorTitle = /\b(senior|sr\.?|lead|principal|staff|manager|director|architect|head|vp|smts|lmts)\b/i;
-const cities = /\b(bangalore|bengaluru|mangalore|mangaluru|mysore|mysuru)\b/i;
-const blocked = (process.env.BLOCKLIST || 'tcs,infosys,wipro,accenture,cognizant,capgemini,ibm,deloitte').split(',').map(x => x.trim().toLowerCase());
-const ageHours = Number(process.env.JOB_MAX_AGE_HOURS || 24);
+// const roles = /(?:^|[^a-z0-9])(\.net|dot\s?net|asp\.net|c#|java|technical consultant|software engineer|software developer|systems engineer|software trainee|graduate engineer|trainee engineer)(?![a-z0-9])/i;
+// const entryLevel = /\b(fresher|freshers|graduate|trainee|entry.?level|junior|associate|new college graduate|ncg|campus|walk[\s-]?in|0\s*(?:-|–|to)\s*1\s*(?:years?|yrs?))\b/i;
+// const seniorTitle = /\b(senior|sr\.?|lead|principal|staff|manager|director|architect|head|vp|smts|lmts)\b/i;
+// const cities = /\b(bangalore|bengaluru|mangalore|mangaluru|mysore|mysuru)\b/i;
+// const blocked = (process.env.BLOCKLIST || 'tcs,infosys,wipro,accenture,cognizant,capgemini,ibm,deloitte').split(',').map(x => x.trim().toLowerCase());
+// const ageHours = Number(process.env.JOB_MAX_AGE_HOURS || 24);
 const fingerprint = value => crypto.createHash('sha256').update(value).digest('hex');
 const hoursAgo = value => (Date.now() - new Date(value).getTime()) / 36e5;
 const plain = html => String(html || '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&nbsp;/g, ' ').replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n))).replace(/&amp;/g, '&').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -29,6 +33,9 @@ function postedTime(value) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
+/* FILTERS DISABLED: zeroExperienceOnly() and rejection() are commented out so
+   no listing is dropped. Restore by removing this comment block and the one
+   inside consider(). The original filters:
 // Only year counts that sit next to the word "experience" are treated as a
 // requirement, so "130 years of history" does not reject a fresher role.
 function zeroExperienceOnly(text) {
@@ -54,6 +61,7 @@ function rejection(job) {
   if (blocked.some(name => (job.company || '').toLowerCase().includes(name))) return 'blocklisted company';
   return null;
 }
+*/
 
 function isoDate(value) {
   if (value === null || value === undefined || value === '') return null;
@@ -64,7 +72,9 @@ function tally(source) { return { source, inspected: 0, rejected: {}, jobs: [], 
 function consider(t, raw, source, tag) {
   t.inspected += 1;
   const job = { title: plain(raw.title) || 'Untitled role', company: raw.company || '', location: plain(raw.location), url: (raw.url || '').trim(), description: plain(raw.description), postedAt: isoDate(raw.postedAt), source, tag };
-  const reason = job.url ? rejection(job) : 'no link';
+  // FILTERS DISABLED: every result with a link is kept. The filtered line was:
+  // const reason = job.url ? rejection(job) : 'no link';
+  const reason = job.url ? null : 'no link';
   if (reason) { t.rejected[reason] = (t.rejected[reason] || 0) + 1; return; }
   job.fingerprint = fingerprint(`${job.url.toLowerCase()}|${job.title.toLowerCase()}`);
   t.jobs.push(job);
@@ -139,11 +149,22 @@ async function atsJobs(company, t) {
       const page = await getJson(`${base}?country=in&limit=100&offset=${offset}`);
       for (const x of page.content || []) {
         const city = x.location?.city || '';
-        // Details are only fetched for fresh local postings to keep scans fast.
-        if (!cities.test(city) || hoursAgo(x.releasedDate) > ageHours) { consider(t, { title: x.name, company: company.name, location: city, url: `https://jobs.smartrecruiters.com/${company.token}/${x.id}`, postedAt: x.releasedDate }, 'SmartRecruiters', 'Direct'); continue; }
-        const detail = await getJson(`${base}/${x.id}`);
-        const description = Object.values(detail.jobAd?.sections || {}).map(s => s.text).join(' ');
-        consider(t, { title: x.name, company: company.name, location: city, url: detail.postingUrl || `https://jobs.smartrecruiters.com/${company.token}/${x.id}`, description, postedAt: x.releasedDate }, 'SmartRecruiters', 'Direct');
+        const url = `https://jobs.smartrecruiters.com/${company.token}/${x.id}`;
+        // FILTERS DISABLED: every India posting is kept. The list response
+        // already has the title, city and apply link, so details are only
+        // fetched for postings from the last day to keep the scan fast.
+        // The previous guard that considered non-local/stale postings was:
+        // if (!cities.test(city) || hoursAgo(x.releasedDate) > ageHours) { consider(...); continue; }
+        let description = x.name;
+        if (hoursAgo(x.releasedDate) <= 24) {
+          try {
+            const detail = await getJson(`${base}/${x.id}`);
+            description = Object.values(detail.jobAd?.sections || {}).map(s => s.text).join(' ') || x.name;
+            consider(t, { title: x.name, company: company.name, location: city, url: detail.postingUrl || url, description, postedAt: x.releasedDate }, 'SmartRecruiters', 'Direct');
+            continue;
+          } catch { /* fall back to the list fields below */ }
+        }
+        consider(t, { title: x.name, company: company.name, location: city, url, description, postedAt: x.releasedDate }, 'SmartRecruiters', 'Direct');
       }
       if (offset + 100 >= (page.totalFound || 0)) break;
     }
