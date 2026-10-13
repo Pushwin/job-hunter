@@ -39,8 +39,10 @@ export function saveJob(job) {
 }
 
 export function jobs({ limit = 100, tag, search } = {}) {
-  const where = [];
-  const params = [];
+  const maxAge = Math.max(1, Math.min(72, Number(process.env.JOB_MAX_AGE_HOURS || 24)));
+  const cutoff = new Date(Date.now() - maxAge * 36e5).toISOString();
+  const where = ['posted_at IS NOT NULL', 'datetime(posted_at) >= datetime(?)'];
+  const params = [cutoff];
   if (tag && tag !== 'All') { where.push('tag = ?'); params.push(tag); }
   if (search) { where.push('(title LIKE ? OR company LIKE ? OR location LIKE ?)'); params.push(`%${search}%`, `%${search}%`, `%${search}%`); }
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';

@@ -22,7 +22,9 @@ function postedTime(value) {
 function acceptable(job) {
   const text = `${job.title} ${job.description || ''}`;
   const company = (job.company || '').toLowerCase();
-  return roles.test(text) && entryLevel.test(text) && zeroExperienceOnly(text) && cities.test(job.location || text) && !blocked.some(name => company.includes(name)) && (!job.postedAt || hoursAgo(job.postedAt) <= ageHours);
+  // An exact “last 24 hours” promise requires a real timestamp. Search results
+  // without one are deliberately skipped instead of being guessed as fresh.
+  return Boolean(job.postedAt) && roles.test(text) && entryLevel.test(text) && zeroExperienceOnly(text) && cities.test(job.location || text) && !blocked.some(name => company.includes(name)) && hoursAgo(job.postedAt) <= ageHours;
 }
 function zeroExperienceOnly(text) {
   // Reject a clear experience requirement above zero, such as “2–4 years”
@@ -48,18 +50,24 @@ async function serp(params) {
 }
 export async function googleJobs() {
   const found = [];
+  const roleQueries = [
+    'fresher .NET C# developer 0 years',
+    'fresher Java software engineer OR associate technical consultant 0 years'
+  ];
   for (const city of ['Bangalore', 'Mangalore', 'Mysore']) {
-    const data = await serp({ engine: 'google_jobs', q: '(fresher OR graduate OR trainee OR associate) (.NET OR C# OR Java OR "Technical Consultant" OR "Software Engineer") ("0 years" OR "0-1 years")', location: city, hl: 'en', gl: 'in' });
-    for (const item of data.jobs_results || []) {
-      const apply = item.apply_options?.[0]?.link || item.share_link;
-      const match = normalize({ title: item.title, company: item.company_name, location: item.location, url: apply, description: item.description, postedAt: postedTime(item.detected_extensions?.posted_at) }, 'SerpAPI Google Jobs', 'Direct');
-      if (match) found.push(match);
+    for (const query of roleQueries) {
+      const data = await serp({ engine: 'google_jobs', q: query, location: city, hl: 'en', gl: 'in' });
+      for (const item of data.jobs_results || []) {
+        const apply = item.apply_options?.[0]?.link || item.share_link;
+        const match = normalize({ title: item.title, company: item.company_name, location: item.location, url: apply, description: item.description, postedAt: postedTime(item.detected_extensions?.posted_at) }, 'SerpAPI Google Jobs', 'Direct');
+        if (match) found.push(match);
+      }
     }
   }
   return found;
 }
 export async function googleForms() {
-  const data = await serp({ engine: 'google', q: '(site:forms.gle OR site:docs.google.com/forms) (hiring OR walk-in OR fresher) (Bangalore OR Mangalore OR Mysore) when:1d', tbs: 'qdr:d', hl: 'en', gl: 'in' });
+  const data = await serp({ engine: 'google', q: '(site:forms.gle OR site:docs.google.com/forms) (fresher OR graduate OR trainee) (.NET OR C# OR Java OR "Technical Consultant") (Bangalore OR Mangalore OR Mysore)', tbs: 'qdr:d', hl: 'en', gl: 'in' });
   return (data.organic_results || []).map(x => normalize({ title: x.title, url: x.link, description: x.snippet, location: x.snippet, postedAt: postedTime(x.date) }, 'SerpAPI Google search', 'Google Form')).filter(Boolean);
 }
 async function boardJobs(company) {

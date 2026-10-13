@@ -1,7 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import cron from 'node-cron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { saveJob, jobs, stats, latestScan, startScan, finishScan, unalerted, markAlerted } from './db.js';
@@ -47,6 +46,8 @@ const port = Number(process.env.PORT || 8787);
 if (process.argv.includes('--scan')) scan().then(result => { console.log(JSON.stringify(result)); process.exit(0); }).catch(error => { console.error(error); process.exit(1); });
 else {
   app.listen(port, () => console.log(`Job Hunter API running on ${port}`));
-  const minutes = Math.max(5, Number(process.env.SCAN_INTERVAL_MINUTES || 60));
-  cron.schedule(`*/${minutes} * * * *`, scan, { timezone: 'Asia/Kolkata' });
+  const minutes = Math.max(5, Number(process.env.SCAN_INTERVAL_MINUTES || 1440));
+  // setInterval supports long durations such as 24 hours; a cron minute field
+  // does not represent “every 1440 minutes” reliably.
+  setInterval(() => scan().catch(error => console.error('Scheduled scan failed:', error.message)), minutes * 60_000);
 }

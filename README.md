@@ -9,7 +9,7 @@ Privacy-first job discovery for fresher and associate .NET, C#, Java and technic
 3. Run `npm install`, then `npm run dev`. Open `http://localhost:5173`.
 4. Choose **Test Telegram** first, then **Search now**.
 
-The default schedule is every 12 hours (`SCAN_INTERVAL_MINUTES=720`), which keeps the four SerpAPI requests per scan within the free-tier allowance. `JOB_MAX_AGE_HOURS=24` expands the pool while still keeping listings fresh. `npm run scan` performs one scan, which suits a GitHub Actions schedule.
+The default schedule is every 24 hours (`SCAN_INTERVAL_MINUTES=1440`). `JOB_MAX_AGE_HOURS=24` keeps only jobs with a verifiable timestamp inside the last day; listings with no timestamp are skipped rather than labelled as fresh. A full scan runs seven SerpAPI requests (two role searches for each city plus one Google Form search), which is about 210 calls/month on the free SerpAPI plan. `npm run scan` performs one scan, which suits a GitHub Actions schedule.
 
 ## Sources and privacy
 
