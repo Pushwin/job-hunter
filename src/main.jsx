@@ -6,7 +6,7 @@ const API = '/api';
 const relative = value => value ? new Intl.RelativeTimeFormat('en', { numeric: 'auto' }).format(Math.round((new Date(value) - Date.now()) / 36e5), 'hour') : 'just now';
 function App() {
   const [jobs, setJobs] = useState([]); const [info, setInfo] = useState({}); const [tag, setTag] = useState('All'); const [search, setSearch] = useState(''); const [working, setWorking] = useState(false); const [toast, setToast] = useState('');
-  async function load() { const [j, d] = await Promise.all([fetch(`${API}/jobs?tag=${tag}&search=${encodeURIComponent(search)}`).then(x => x.json()), fetch(`${API}/dashboard`).then(x => x.json())]); setJobs(j); setInfo(d); }
+  async function load() { const [j, d] = await Promise.all([fetch(`${API}/jobs?limit=50&tag=${tag}&search=${encodeURIComponent(search)}`).then(x => x.json()), fetch(`${API}/dashboard`).then(x => x.json())]); setJobs(j); setInfo(d); }
   useEffect(() => { load().catch(() => setToast('Could not reach the backend. Is it running?')); }, [tag, search]);
   async function scan() { setWorking(true); try { const r = await fetch(`${API}/scan`, { method: 'POST' }).then(x => x.json()); setToast(r.error || (r.skipped ? r.reason : `Scan complete: ${r.newMatches} new matches.`)); await load(); } finally { setWorking(false); } }
   async function testAlert() { const r = await fetch(`${API}/test-alert`, { method: 'POST' }).then(x => x.json()); setToast(r.error || (r.sent ? 'Test alert sent to Telegram.' : r.reason)); }

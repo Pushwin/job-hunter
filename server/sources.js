@@ -1,10 +1,11 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 
-const roles = /\b(fresher|graduate|junior|associate|entry.?level|\.net|c#|java|technical consultant)\b/i;
+const roles = /\b(\.net|c#|java|technical consultant|software engineer|software developer|systems engineer)\b/i;
+const entryLevel = /\b(fresher|graduate|trainee|entry.?level|junior|associate|0\s*(?:-|–|to)\s*1\s*(?:years?|yrs?))\b/i;
 const cities = /\b(bangalore|bengaluru|mangalore|mangaluru|mysore|mysuru)\b/i;
 const blocked = (process.env.BLOCKLIST || 'tcs,infosys,wipro,accenture,cognizant,capgemini,ibm,deloitte').split(',').map(x => x.trim().toLowerCase());
-const ageHours = 6;
+const ageHours = Number(process.env.JOB_MAX_AGE_HOURS || 24);
 const fingerprint = value => crypto.createHash('sha256').update(value).digest('hex');
 const hoursAgo = value => value ? (Date.now() - new Date(value).getTime()) / 36e5 : 0;
 function postedTime(value) {
@@ -21,7 +22,15 @@ function postedTime(value) {
 function acceptable(job) {
   const text = `${job.title} ${job.description || ''}`;
   const company = (job.company || '').toLowerCase();
-  return roles.test(text) && cities.test(job.location || text) && !blocked.some(name => company.includes(name)) && (!job.postedAt || hoursAgo(job.postedAt) <= ageHours);
+  return roles.test(text) && entryLevel.test(text) && zeroExperienceOnly(text) && cities.test(job.location || text) && !blocked.some(name => company.includes(name)) && (!job.postedAt || hoursAgo(job.postedAt) <= ageHours);
+}
+function zeroExperienceOnly(text) {
+  // Reject a clear experience requirement above zero, such as “2–4 years”
+  // or “1+ year”. Listings that omit experience remain eligible if entry-level.
+  const range = text.match(/\b(\d+)\s*(?:-|–|to)\s*(\d+)\s*(?:years?|yrs?)\b/i);
+  if (range) return Number(range[1]) === 0 && Number(range[2]) <= 1;
+  const single = text.match(/\b(\d+)\s*\+?\s*(?:years?|yrs?)\b/i);
+  return !single || Number(single[1]) === 0;
 }
 function normalize(raw, source, tag) {
   const job = { title: raw.title || 'Untitled role', company: raw.company || raw.company_name || '', location: raw.location || raw.location_name || '', url: raw.url || raw.apply_url || raw.share_link || '', description: raw.description || '', postedAt: raw.postedAt || raw.posted_at || null, source, tag };
@@ -40,7 +49,7 @@ async function serp(params) {
 export async function googleJobs() {
   const found = [];
   for (const city of ['Bangalore', 'Mangalore', 'Mysore']) {
-    const data = await serp({ engine: 'google_jobs', q: 'fresher OR associate .NET C# Java technical consultant', location: city, hl: 'en', gl: 'in' });
+    const data = await serp({ engine: 'google_jobs', q: '(fresher OR graduate OR trainee OR associate) (.NET OR C# OR Java OR "Technical Consultant" OR "Software Engineer") ("0 years" OR "0-1 years")', location: city, hl: 'en', gl: 'in' });
     for (const item of data.jobs_results || []) {
       const apply = item.apply_options?.[0]?.link || item.share_link;
       const match = normalize({ title: item.title, company: item.company_name, location: item.location, url: apply, description: item.description, postedAt: postedTime(item.detected_extensions?.posted_at) }, 'SerpAPI Google Jobs', 'Direct');
