@@ -15,17 +15,17 @@ const plain = html => String(html || '').replace(/&lt;/g, '<').replace(/&gt;/g, 
 
 function postedTime(value) {
   if (!value) return null;
+  const text = String(value);
   // "Today" / "Posted Today" is always inside the last 24 hours.
-  if (/\b(today|just posted|recently posted)\b/i.test(String(value))) return new Date().toISOString();
-  const relative = String(value).match(/(\d+)\s*(minute|min|hour|hr|day|week)/i);
+  if (/\b(today|just posted|recently posted)\b/i.test(text)) return new Date().toISOString();
+  // "Yesterday" / "1 day ago" is at least 24 hours old, so it lands outside the window.
+  if (/\byesterday\b/i.test(text)) return new Date(Date.now() - 36 * 36e5).toISOString();
+  const relative = text.match(/(\d+)\+?\s*(minute|min|hour|hr|day|week|month)/i);
   if (relative) {
-    // "1 day ago" / "Yesterday" can be up to 48 hours old, so it is not
-    // treated as inside an exact 24-hour window.
-    if (/day|week/i.test(relative[2])) return null;
-    const factor = /minute|min/i.test(relative[2]) ? 1 / 60 : 1;
-    return new Date(Date.now() - Number(relative[1]) * factor * 36e5).toISOString();
+    const hours = { minute: 1 / 60, min: 1 / 60, hour: 1, hr: 1, day: 24, week: 168, month: 720 }[relative[2].toLowerCase()];
+    return new Date(Date.now() - Number(relative[1]) * hours * 36e5).toISOString();
   }
-  const date = new Date(value);
+  const date = new Date(text);
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
@@ -45,7 +45,7 @@ function zeroExperienceOnly(text) {
 function rejection(job) {
   const text = `${job.title} ${job.description}`;
   if (!job.postedAt) return 'no exact date';
-  if (hoursAgo(job.postedAt) > ageHours) return 'older than 24h';
+  if (hoursAgo(job.postedAt) >= ageHours) return 'older than 24h';
   if (!cities.test(job.location || text)) return 'other city';
   if (!roles.test(text)) return 'other role';
   if (seniorTitle.test(job.title)) return 'senior title';
@@ -98,7 +98,7 @@ export async function googleJobs() {
       try {
         const data = await serp({ engine: 'google_jobs', q: query, location: city, hl: 'en', gl: 'in' });
         for (const item of data.jobs_results || []) {
-          consider(t, { title: item.title, company: item.company_name, location: item.location, url: item.apply_options?.[0]?.link || item.share_link, description: item.description, postedAt: postedTime(item.detected_extensions?.posted_at) }, 'SerpAPI Google Jobs', 'Direct');
+          consider(t, { title: item.title, company: item.company_name, location: item.location, url: item.apply_options?.[0]?.link || item.share_link, description: item.description, postedAt: postedTime(item.detected_extensions?.posted_at || item.extensions?.find(e => /ago|today|yesterday|posted/i.test(e))) }, 'SerpAPI Google Jobs', 'Direct');
         }
       } catch (error) { t.errors.push(`${city.split(',')[0]} "${query}": ${error.message}`); }
     }
@@ -111,7 +111,7 @@ export async function googleForms() {
   if (!process.env.SERPAPI_KEY) { t.errors.push('SERPAPI_KEY not set'); return t; }
   try {
     const data = await serp({ engine: 'google', q: 'site:docs.google.com/forms OR site:forms.gle (fresher OR trainee) apply (Java OR .NET OR C#) (Bangalore OR Bengaluru)', tbs: 'qdr:d', hl: 'en', gl: 'in' });
-    for (const x of data.organic_results || []) consider(t, { title: x.title, url: x.link, description: x.snippet, location: x.snippet, postedAt: postedTime(x.date) }, 'SerpAPI Google search', 'Google Form');
+    for (const x of data.organic_results || []) consider(t, { title: x.title, url: x.link, description: x.snippet, location: `${x.title} ${x.snippet}`, postedAt: postedTime(x.date) }, 'SerpAPI Google search', 'Google Form');
   } catch (error) { t.errors.push(error.message); }
   return t;
 }
@@ -203,6 +203,13 @@ export async function walkIns() {
       }
     } catch (error) { t.errors.push(`${new URL(feed).hostname}: ${error.message}`); }
   }));
+  // FreshersNow blocks Render's datacenter IPs, so Google search is the reliable walk-in source.
+  if (process.env.SERPAPI_KEY) {
+    try {
+      const data = await serp({ engine: 'google', q: '("walk-in" OR walkin OR "walk in drive") (fresher OR freshers) (Java OR .NET OR "C#") (Bangalore OR Bengaluru OR Mysore OR Mangalore)', tbs: 'qdr:d', hl: 'en', gl: 'in' });
+      for (const x of data.organic_results || []) consider(t, { title: x.title, url: x.link, description: x.snippet, location: `${x.title} ${x.snippet}`, postedAt: postedTime(x.date) }, 'SerpAPI Google search', 'Walk-in');
+    } catch (error) { t.errors.push(`Google search: ${error.message}`); }
+  }
   // The walk-in category is also in the main feed; keep one copy of each post.
   const seen = new Set();
   t.jobs = t.jobs.filter(job => !seen.has(job.fingerprint) && seen.add(job.fingerprint));
